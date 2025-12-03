@@ -110,22 +110,105 @@ Some cities show wide confidence intervals, suggesting uncertainty due to smalle
 Cities where the CI crosses 1.0 suggest no strong evidence of a sex difference in clearance odds.  
 
 
+# Problem Two
+
+
+```{r}
+library(p8105.datasets)
+data(weather_df)
+```
 
 
 
+## Fit One Linear Model
+
+
+```{r}
+mlr_fit <- lm(tmax ~ tmin + prcp, data = weather_df)
+summary(mlr_fit)
+
+
+# extracting some outcomes
+r_square_hat <- summary(mlr_fit)$r.squared
+
+coef_hat <- coef(mlr_fit)
+beta1_hat <- coef_hat["tmin"]
+beta2_hat <- coef_hat["prcp"]
+
+ratio_hat <- beta1_hat / beta2_hat
+r_square_hat
+ratio_hat
+```
+
+
+## A Function
+
+```{r}
+boot_start <- function(data) {
+  fit <- lm(tmax ~ tmin + prcp, data = data)
+  
+  r2 <- summary(fit)$r.squared
+  beta <- coef(fit)
+  ratio <- beta["tmin"] / beta["prcp"]
+  
+  c(r2 = r2, ratio = ratio)
+}
+
+boot_start(weather_df)
+```
 
 
 
+## Bootstrap
+
+```{r}
+set.seed(20251203)
+
+n_boot <- 5000
+n <- nrow(weather_df)
+
+boot_results <- 
+  replicate(n_boot, {
+    df_boot <- weather_df[sample(1:n, n, replace = TRUE), ]
+    boot_start(df_boot)
+  })
+
+boot_results <- t(boot_results) |>
+  as.data.frame()
+```
 
 
+## Make a Plot
+
+```{r}
+boot_results_long <- 
+  boot_results |>
+  pivot_longer(cols = everything(),
+               names_to = "statistic",
+               values_to = "value")
+
+ggplot(boot_results_long, aes(x = value)) +
+  geom_histogram(bins = 30, fill = "steelblue", alpha = 0.7) +
+  facet_wrap(~ statistic, scales = "free") +
+  theme_minimal() +
+  labs(
+    title = "Bootstrap Distributions of R² and β1/β2",
+    x = "Value",
+    y = "Frequency"
+  )
 
 
+CI_r2 <- quantile(boot_results$r2, c(0.025, 0.975))
+CI_ratio <- quantile(boot_results$ratio, c(0.025, 0.975))
+
+CI_r2
+CI_ratio
+```
 
 
+The figure shows the bootstrap distributions of the coefficient of determination r^2 and the regression coefficient ratio beta1^hat / beta2^hat. The bootstrap distribution of r^2 is fairly narrow and approximately symmetric around values close to 0.94, indicating that the model consistently explains a large proportion of variability in maximum temperature across resampled datasets. This suggests that the model fit is highly stable.  
 
-
-
-
+In contrast, the distribution of beta1^hat / beta2^hat shows greater spread and noticeable left-skewness. This indicates more uncertainty in the relative strength between the effects of minimum temperature and precipitation on maximum temperature. The larger sampling variability suggests that the effect ratio is less stable and potentially more sensitive to the specific observations included in the dataset.  
 
 
 
