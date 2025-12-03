@@ -1,0 +1,143 @@
+---
+title: "2025-12-03_p8105_hw6_tw3128.Rmd"
+author: "Chris"
+date: "2025-12-03"
+output: github_document
+---
+
+```{r include = FALSE}
+library(tidyverse)
+library(plotly)
+library(janitor)
+library(broom)
+```
+
+
+# Problem One
+
+```{r}
+df_homicide <- read_csv("data/homicide-data.csv") |>
+  clean_names()
+```
+
+
+## city_state
+
+```{r}
+df_homicide <- df_homicide |>
+  mutate(city_state = paste(city, state, sep = ", ")) |>
+  filter(!city_state %in% c("Dallas, TX", "Phoenix, AZ", "Kansas City, MO", "Tulsa, AL")) |>
+  filter(victim_race %in% c("White", "Black")) |>
+  mutate(
+    victim_age = as.numeric(victim_age))
+```
+
+
+
+## Baltimore, MD
+
+
+```{r}
+df_baltimore <- df_homicide |>
+  filter(city_state == "Baltimore, MD") |>
+  mutate(
+    resolved = ifelse(disposition == "Closed by arrest", 1, 0),
+    victim_race = as.factor(victim_race),
+    victim_sex = as.factor(victim_sex)
+  )
+
+model_lgt <- 
+  glm(resolved ~ victim_age + victim_sex + victim_race, family = binomial, data = df_baltimore) 
+result <- tidy(model_lgt, exponentiate = TRUE, conf.int = TRUE)
+result
+```
+
+Keeping other factors fixed, the male victims have 0.4256 times odds of being resolved compared with female victims, and the 0.95 confidence interval is `[0.3241908, 0.5575508]`.  
+
+
+
+## All Cities
+
+```{r}
+df_homicide <- df_homicide |>
+   mutate(
+    resolved = ifelse(disposition == "Closed by arrest", 1, 0),
+    victim_race = as.factor(victim_race),
+    victim_sex = as.factor(victim_sex)
+  )
+
+df_cities_results <- df_homicide |>
+  group_by(city_state) |>
+  nest() |>
+  mutate(
+    model = map(data, ~ glm(resolved ~ victim_age + victim_sex + victim_race,
+                            data = .x, family = binomial)),
+    tidy_res = map(model, ~ tidy(.x, exponentiate = TRUE,
+                                 conf.int = TRUE))
+  ) |>
+  unnest(tidy_res) |>
+  filter(term == "victim_sexMale") |> 
+  select(city_state, estimate, conf.low, conf.high)
+```
+
+
+## Make a Plot
+
+
+```{r}
+df_cities_results <- df_cities_results |>
+  arrange(estimate) |>
+  mutate(city_state = factor(city_state, levels = city_state)) 
+
+df_cities_results |>
+  ggplot(aes(x = estimate, y = city_state, color = city_state)) + 
+  geom_point() +
+  geom_errorbarh(aes(xmin = conf.low, xmax = conf.high), height = 0.2) +
+  geom_vline(xintercept = 1, linetype = "dashed") + 
+  labs(
+    x = "Adjusted Odds Ratio (Male vs Female Victims)",
+    y = "City",
+    title = "Adjusted OR for Homicide Clearance by Victim Sex Across Cities"
+  ) +
+  theme(axis.text.y = element_text(face = "italic"))
+```
+
+
+Most cities have an OR < 1, indicating lower odds of clearance for male victims compared to female victims.
+
+Some cities show wide confidence intervals, suggesting uncertainty due to smaller sample sizes.   
+
+Cities where the CI crosses 1.0 suggest no strong evidence of a sex difference in clearance odds.  
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
