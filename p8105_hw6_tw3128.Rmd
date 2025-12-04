@@ -10,6 +10,9 @@ library(tidyverse)
 library(plotly)
 library(janitor)
 library(broom)
+library(car)
+library(MASS)
+library(modelr)
 ```
 
 
@@ -77,7 +80,7 @@ df_cities_results <- df_homicide |>
   ) |>
   unnest(tidy_res) |>
   filter(term == "victim_sexMale") |> 
-  select(city_state, estimate, conf.low, conf.high)
+  dplyr::select(city_state, estimate, conf.low, conf.high)
 ```
 
 
@@ -106,7 +109,6 @@ df_cities_results |>
 Most cities have an OR < 1, indicating lower odds of clearance for male victims compared to female victims.
 
 Some cities show wide confidence intervals, suggesting uncertainty due to smaller sample sizes.   
-
 Cities where the CI crosses 1.0 suggest no strong evidence of a sex difference in clearance odds.  
 
 
@@ -209,6 +211,142 @@ CI_ratio
 The figure shows the bootstrap distributions of the coefficient of determination r^2 and the regression coefficient ratio beta1^hat / beta2^hat. The bootstrap distribution of r^2 is fairly narrow and approximately symmetric around values close to 0.94, indicating that the model consistently explains a large proportion of variability in maximum temperature across resampled datasets. This suggests that the model fit is highly stable.  
 
 In contrast, the distribution of beta1^hat / beta2^hat shows greater spread and noticeable left-skewness. This indicates more uncertainty in the relative strength between the effects of minimum temperature and precipitation on maximum temperature. The larger sampling variability suggests that the effect ratio is less stable and potentially more sensitive to the specific observations included in the dataset.  
+
+
+
+# Problem Three
+
+```{r}
+df_bwt <- read_csv("data/birthweight.csv") |>
+  clean_names() |>
+  mutate(
+    babysex = as.factor(babysex)
+    
+  )
+```
+
+
+## The Basic Model
+
+```{r}
+basic_mlr <- lm(bwt ~ babysex + blength + gaweeks + ppbmi + smoken + wtgain, data = df_bwt)
+summary(basic_mlr)
+vif(basic_mlr)
+```
+
+I began constructing a regression model for birthweight using predictors supported by existing medical and biological evidence.
+Specifically, we included:
+
+* `babysex` — sex differences in fetal growth are well-documented; on average, male infants tend to have higher birthweight.
+
+* `blength` — birth length is a direct indicator of fetal physical growth and is strongly associated with weight at delivery.
+
+* `gaweeks` — longer gestational age allows more time for fetal development, contributing to higher birthweight.
+
+* `ppbmi` — maternal pre-pregnancy nutritional status influences fetal growth through placental resource supply.
+
+* `smoken` — cigarette exposure during pregnancy reduces fetal oxygenation and is a well-known risk factor for low birthweight.
+
+* `wtgain` — gestational weight gain reflects nutritional intake during pregnancy and is positively related to fetal growth.
+
+These predictors were chosen in advance based on biological plausibility rather than purely statistical significance.
+Variance inflation factors for all predictors were below 2, indicating no concerning multicollinearity.
+Therefore, this model provides a reasonable and interpretable foundation for further model refinement.
+
+
+
+## Stepwise Method
+
+```{r}
+step_mod <- stepAIC(basic_mlr, direction = "both", trace = FALSE)
+summary(step_mod)
+```
+
+
+I applied a stepwise model selection approach using AIC (stepAIC), but no additional predictors were selected and no terms were removed. This result indicates that the initial model already achieves a near-optimal balance between model fit and complexity.
+Therefore, I retained the original set of predictors for further evaluation and interpretation.
+
+
+## Diagnostic
+
+```{r}
+df_bwt_reg <- df_bwt |>
+ add_predictions(basic_mlr) |>
+ add_residuals(basic_mlr)
+  
+```
+
+
+```{r}
+df_bwt_reg |>
+  ggplot(aes(x = pred, y = resid)) + geom_point(alpha = 0.4) +
+  geom_hline(yintercept = 0, color = "red") +
+  theme_minimal() +
+  labs(title = "Residual vs Fitted Plot: Basic Model",
+       x = "Fitted birthweight",
+       y = "Residual")
+
+```
+
+
+
+## Two Other Models
+
+```{r}
+model1 <- lm(bwt ~ blength + gaweeks, data = df_bwt)
+summary(model1)
+```
+
+
+```{r}
+model2 <- lm(bwt ~ bhead * blength * babysex, data = df_bwt)
+summary(model2)
+```
+
+
+## Comparisons
+
+```{r}
+set.seed(20251203)
+
+cv_df <- crossv_mc(df_bwt, 50) |>  
+  mutate(
+    train = map(train, as_tibble),
+    test  = map(test,  as_tibble),
+
+    
+    mod_A     = map(train, ~ lm(bwt ~ blength + gaweeks, data = .x)),
+    mod_basic = map(train, ~ lm(bwt ~ babysex + blength + gaweeks + ppbmi + smoken + wtgain, data = .x)),
+    mod_B     = map(train, ~ lm(bwt ~ bhead * blength * babysex, data = .x)),
+
+    
+    rmse_A     = map2_dbl(mod_A,     test, ~ sqrt(mean((predict(.x, newdata = .y) - .y$bwt)^2))),
+    rmse_basic = map2_dbl(mod_basic, test, ~ sqrt(mean((predict(.x, newdata = .y) - .y$bwt)^2))),
+    rmse_B     = map2_dbl(mod_B,     test, ~ sqrt(mean((predict(.x, newdata = .y) - .y$bwt)^2)))
+  )
+
+cv_results <- cv_df |>
+  summarise(
+    rmse_A     = mean(rmse_A),
+    rmse_basic = mean(rmse_basic),
+    rmse_B     = mean(rmse_B)
+  ) |>
+  pivot_longer(everything(),
+               names_to = "model",
+               values_to = "mean_rmse")
+
+cv_results
+```
+
+
+Based on the cross-validated RMSE, the fully interacted model (including head circumference, length, sex, and all interactions) produced the lowest prediction error, indicating the best predictive performance.
+
+However, this model is extremely complex, includes a three-way interaction, and is difficult to interpret scientifically.
+
+The proposed model achieves a reasonable trade-off between prediction accuracy and interpretability, performing substantially better than the simple baseline model and only moderately worse than the highly complex alternative.
+
+Therefore, we would recommend our model for practical use, as it captures important biological predictors while maintaining clarity in how each factor relates to birthweight.
+
 
 
 
