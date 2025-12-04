@@ -118,6 +118,8 @@ Cities where the CI crosses 1.0 suggest no strong evidence of a sex difference i
 ```{r}
 library(p8105.datasets)
 data(weather_df)
+weather_df <- weather_df |>
+  filter(name == "CentralPark_NY")
 ```
 
 
@@ -210,7 +212,7 @@ CI_ratio
 
 The figure shows the bootstrap distributions of the coefficient of determination r^2 and the regression coefficient ratio beta1^hat / beta2^hat. The bootstrap distribution of r^2 is fairly narrow and approximately symmetric around values close to 0.94, indicating that the model consistently explains a large proportion of variability in maximum temperature across resampled datasets. This suggests that the model fit is highly stable.  
 
-In contrast, the distribution of beta1^hat / beta2^hat shows greater spread and noticeable left-skewness. This indicates more uncertainty in the relative strength between the effects of minimum temperature and precipitation on maximum temperature. The larger sampling variability suggests that the effect ratio is less stable and potentially more sensitive to the specific observations included in the dataset.  
+In contrast, the distribution of beta1^hat / beta2^hat shows an extreme condition, in which almost every obversation is equal to 0. 
 
 
 
